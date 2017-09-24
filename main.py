@@ -8,7 +8,8 @@ import tqdm
 import numpy as np
 
 # Check TensorFlow Version
-assert LooseVersion(tf.__version__) >= LooseVersion('1.0'), 'Please use TensorFlow version 1.0 or newer.  You are using {}'.format(tf.__version__)
+assert LooseVersion(tf.__version__) >= LooseVersion(
+    '1.0'), 'Please use TensorFlow version 1.0 or newer.  You are using {}'.format(tf.__version__)
 print('TensorFlow Version: {}'.format(tf.__version__))
 
 # Check for a GPU
@@ -41,6 +42,8 @@ def load_vgg(sess, vgg_path):
     t_layer7_out = graph.get_tensor_by_name(vgg_layer7_out_tensor_name)
 
     return t_input, t_keep_prob, t_layer3_out, t_layer4_out, t_layer7_out
+
+
 tests.test_load_vgg(load_vgg, tf)
 
 
@@ -68,6 +71,8 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     # output: 8x features + 4x pool4 + 2x pool3
     tf_final = tf.layers.conv2d_transpose(tf_skip2, num_classes, 16, 8, padding='SAME')
     return tf_final
+
+
 tests.test_layers(layers)
 
 
@@ -85,6 +90,8 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
         tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_label))
     train_op = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cross_entropy_loss)
     return logits, train_op, cross_entropy_loss
+
+
 tests.test_optimize(optimize)
 
 
@@ -105,7 +112,7 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     """
     params = {
         'learning_rate': 0.001,
-        'keep_prob':     0.5
+        'keep_prob': 0.5
     }
     sess.run(tf.global_variables_initializer())
     for e in tqdm.tqdm(range(epochs)):
@@ -115,13 +122,15 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
             # change labels to 1.0 with True and 0.0 with False
             labels = labels.astype(np.float32)
             _, loss = sess.run([train_op, cross_entropy_loss],
-                            feed_dict={
-                                input_image: input_images,
-                                correct_label: labels,
-                                keep_prob: params['keep_prob'],
-                                learning_rate: params['learning_rate']
-                            })
+                               feed_dict={
+                                   input_image: input_images,
+                                   correct_label: labels,
+                                   keep_prob: params['keep_prob'],
+                                   learning_rate: params['learning_rate']
+                               })
             print("Loss: ", loss)
+
+
 tests.test_train_nn(train_nn)
 
 
