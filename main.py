@@ -77,6 +77,11 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     # output: 8x features + 4x pool4 + 2x pool3
     tf_final = tf.layers.conv2d_transpose(tf_skip2, num_classes, 16, 8, padding='SAME',
                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
+
+    tf.stop_gradient(vgg_layer3_out)
+    tf.stop_gradient(vgg_layer4_out)
+    tf.stop_gradient(vgg_layer7_out)
+
     return tf_final
 
 
@@ -93,9 +98,11 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     :return: Tuple of (logits, train_op, cross_entropy_loss)
     """
     logits = tf.reshape(nn_last_layer, (-1, num_classes))
+    labels = tf.reshape(correct_label, (-1, num_classes))
     cross_entropy_loss = tf.reduce_mean(
-        tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_label))
+        tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels))
     train_op = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cross_entropy_loss)
+
     return logits, train_op, cross_entropy_loss
 
 
@@ -118,13 +125,16 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param learning_rate: TF Placeholder for learning rate
     """
     params = {
-        'learning_rate': 0.0002,
+        'learning_rate': 0.001,
         'keep_prob': 0.5
     }
     sess.run(tf.global_variables_initializer())
+    sess.run(tf.local_variables_initializer())
 
     for e in range(epochs):
         # size of training set: 290
+        total_lost = 0
+        processed_samples = 0
         num_batches = math.ceil(290 / batch_size)
         loop = tqdm(get_batches_fn(batch_size), total=num_batches)
         for input_images, labels in loop:
@@ -137,7 +147,11 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
                                    keep_prob: params['keep_prob'],
                                    learning_rate: params['learning_rate']
                                })
-            loop.set_description("Epoch {}/{} - Loss: {:.5f}".format(e + 1, epochs, loss))
+            num_samples = input_images.shape[0]
+            processed_samples += num_samples
+            total_lost += (loss * num_samples)
+            mean_lost = total_lost / processed_samples
+            loop.set_description("Epoch {}/{} - Loss: {:.5f}".format(e + 1, epochs, mean_lost))
 
 
 tests.test_train_nn(train_nn)
@@ -158,7 +172,7 @@ def run():
     #  https://www.cityscapes-dataset.com/
 
     epochs = 100
-    batch_size = 16
+    batch_size = 20
 
     with tf.Session() as sess:
         # Path to vgg model
@@ -176,16 +190,13 @@ def run():
                                          shape=(None, image_shape[0], image_shape[1], num_classes),
                                          name='correct_label')
 
-        # TODO: Build NN using load_vgg, layers, and optimize function
         t_input, t_keep_prob, t_layer3_out, t_layer4_out, t_layer7_out = load_vgg(sess, vgg_path)
         output = layers(t_layer3_out, t_layer4_out, t_layer7_out, num_classes)
         logits, train_op, loss = optimize(output, t_correct_label, t_learning_rate, num_classes)
 
-        # TODO: Train NN using the train_nn function
         train_nn(sess, epochs, batch_size, get_batches_fn, train_op, loss, t_input,
                  t_correct_label, t_keep_prob, t_learning_rate)
 
-        # TODO: Save inference data using helper.save_inference_samples
         helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, t_keep_prob, t_input)
 
         # OPTIONAL: Apply the trained model to a video
