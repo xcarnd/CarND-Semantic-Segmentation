@@ -4,8 +4,9 @@ import helper
 import warnings
 from distutils.version import LooseVersion
 import project_tests as tests
-import tqdm
+from tqdm import tqdm
 import numpy as np
+import math
 
 # Check TensorFlow Version
 assert LooseVersion(tf.__version__) >= LooseVersion(
@@ -57,19 +58,25 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :return: The Tensor for the last layer of output
     """
     # 1x1 convolution layer for feature extraction
-    tf_conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, 1)
+    tf_conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, 1,
+                                  kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
     # conv2d-transpose for 2x upsampling
-    tf_2x = tf.layers.conv2d_transpose(tf_conv1x1, num_classes, 4, 2, padding='SAME')
+    tf_2x = tf.layers.conv2d_transpose(tf_conv1x1, num_classes, 4, 2, padding='SAME',
+                                       kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
     # combine with pooling layer 4
-    tf_skip1 = tf.add(tf_2x, tf.layers.conv2d(vgg_layer4_out, num_classes, 1, 1))
+    tf_skip1 = tf.add(tf_2x, tf.layers.conv2d(vgg_layer4_out, num_classes, 1, 1,
+                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3)))
     # perform conv2d-transpose for 2x upsampling again. 
     # output: 4x features + 2x pool4
-    tf_4x = tf.layers.conv2d_transpose(tf_skip1, num_classes, 4, 2, padding='SAME')
+    tf_4x = tf.layers.conv2d_transpose(tf_skip1, num_classes, 4, 2, padding='SAME',
+                                       kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
     # combile with pooling layer 3
-    tf_skip2 = tf.add(tf_4x, tf.layers.conv2d(vgg_layer3_out, num_classes, 1, 1))
+    tf_skip2 = tf.add(tf_4x, tf.layers.conv2d(vgg_layer3_out, num_classes, 1, 1,
+                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3)))
     # perform conv2d-transpose for 2x upsampling again. 
     # output: 8x features + 4x pool4 + 2x pool3
-    tf_final = tf.layers.conv2d_transpose(tf_skip2, num_classes, 16, 8, padding='SAME')
+    tf_final = tf.layers.conv2d_transpose(tf_skip2, num_classes, 16, 8, padding='SAME',
+                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
     return tf_final
 
 
@@ -111,14 +118,16 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param learning_rate: TF Placeholder for learning rate
     """
     params = {
-        'learning_rate': 0.001,
+        'learning_rate': 0.0002,
         'keep_prob': 0.5
     }
     sess.run(tf.global_variables_initializer())
-    for e in tqdm.tqdm(range(epochs)):
-        for input_images, labels in get_batches_fn(batch_size):
-            # normalize input to 0.0 - 1.0
-            input_images = input_images.astype(np.float32) / 255.0
+
+    for e in range(epochs):
+        # size of training set: 290
+        num_batches = math.ceil(290 / batch_size)
+        loop = tqdm(get_batches_fn(batch_size), total=num_batches)
+        for input_images, labels in loop:
             # change labels to 1.0 with True and 0.0 with False
             labels = labels.astype(np.float32)
             _, loss = sess.run([train_op, cross_entropy_loss],
@@ -128,7 +137,7 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
                                    keep_prob: params['keep_prob'],
                                    learning_rate: params['learning_rate']
                                })
-            print("Loss: ", loss)
+            loop.set_description("Epoch {}/{} - Loss: {:.5f}".format(e + 1, epochs, loss))
 
 
 tests.test_train_nn(train_nn)
@@ -148,8 +157,8 @@ def run():
     # You'll need a GPU with at least 10 teraFLOPS to train on.
     #  https://www.cityscapes-dataset.com/
 
-    epochs = 5
-    batch_size = 1
+    epochs = 100
+    batch_size = 16
 
     with tf.Session() as sess:
         # Path to vgg model
@@ -177,7 +186,7 @@ def run():
                  t_correct_label, t_keep_prob, t_learning_rate)
 
         # TODO: Save inference data using helper.save_inference_samples
-        #  helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
+        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, t_keep_prob, t_input)
 
         # OPTIONAL: Apply the trained model to a video
 
