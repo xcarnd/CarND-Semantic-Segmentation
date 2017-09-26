@@ -59,24 +59,30 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     """
     # 1x1 convolution layer for feature extraction
     tf_conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, 1,
-                                  kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
+                                  kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3),
+                                  kernel_initializer=tf.truncated_normal_initializer(stddev=0.01))
     # conv2d-transpose for 2x upsampling
     tf_2x = tf.layers.conv2d_transpose(tf_conv1x1, num_classes, 4, 2, padding='SAME',
-                                       kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
+                                       kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3),
+                                       kernel_initializer=tf.truncated_normal_initializer(stddev=0.01))
     # combine with pooling layer 4
     tf_skip1 = tf.add(tf_2x, tf.layers.conv2d(vgg_layer4_out, num_classes, 1, 1,
-                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3)))
+                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3),
+                                              kernel_initializer=tf.truncated_normal_initializer(stddev=0.01)))
     # perform conv2d-transpose for 2x upsampling again. 
     # output: 4x features + 2x pool4
     tf_4x = tf.layers.conv2d_transpose(tf_skip1, num_classes, 4, 2, padding='SAME',
-                                       kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
+                                       kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3),
+                                       kernel_initializer=tf.truncated_normal_initializer(stddev=0.01))
     # combile with pooling layer 3
     tf_skip2 = tf.add(tf_4x, tf.layers.conv2d(vgg_layer3_out, num_classes, 1, 1,
-                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3)))
+                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3),
+                                              kernel_initializer=tf.truncated_normal_initializer(stddev=0.01)))
     # perform conv2d-transpose for 2x upsampling again. 
     # output: 8x features + 4x pool4 + 2x pool3
     tf_final = tf.layers.conv2d_transpose(tf_skip2, num_classes, 16, 8, padding='SAME',
-                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
+                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3),
+                                          kernel_initializer=tf.truncated_normal_initializer(stddev=0.01))
 
     tf.stop_gradient(vgg_layer3_out)
     tf.stop_gradient(vgg_layer4_out)
@@ -101,9 +107,17 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     labels = tf.reshape(correct_label, (-1, num_classes))
     cross_entropy_loss = tf.reduce_mean(
         tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels))
-    train_op = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cross_entropy_loss)
 
-    return logits, train_op, cross_entropy_loss
+    # cost without l2 regularizer
+    total_loss = cross_entropy_loss
+
+    # cost with l2 regularizer
+    # l2_reg = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+    # l2_loss = tf.reduce_sum(l2_reg)
+    # total_loss = cross_entropy_loss + l2_loss
+    train_op = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(total_loss)
+
+    return logits, train_op, total_loss
 
 
 tests.test_optimize(optimize)
@@ -125,7 +139,7 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param learning_rate: TF Placeholder for learning rate
     """
     params = {
-        'learning_rate': 0.001,
+        'learning_rate': 0.0001,
         'keep_prob': 0.5
     }
     sess.run(tf.global_variables_initializer())
@@ -171,8 +185,8 @@ def run():
     # You'll need a GPU with at least 10 teraFLOPS to train on.
     #  https://www.cityscapes-dataset.com/
 
-    epochs = 100
-    batch_size = 20
+    epochs = 30
+    batch_size = 5
 
     with tf.Session() as sess:
         # Path to vgg model
